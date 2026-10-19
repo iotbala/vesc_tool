@@ -38,6 +38,7 @@
 
 #ifdef HAS_CANBUS
 #include <QCanBus>
+#include "vesccantransport.h"
 #endif
 
 #include "datatypes.h"
@@ -119,6 +120,8 @@ public:
 #ifdef HAS_CANBUS
     Q_INVOKABLE QString getLastCANbusInterface() const;
     Q_INVOKABLE int getLastCANbusBitrate() const;
+    Q_INVOKABLE QString getLastCANbusBackend() const;
+    Q_INVOKABLE int getLastCANbusID() const;
 #endif
 
     // SWD Programming
@@ -191,7 +194,7 @@ public:
         return connectSerial(port, 115200);
     }
     Q_INVOKABLE QVariantList listSerialPorts();
-    QList<QString> listCANbusInterfaces();
+    QList<QString> listCANbusInterfaces(QString backend = QString(), QString *error = nullptr);
     Q_INVOKABLE bool connectCANbus(QString backend, QString ifName, int bitrate);
     Q_INVOKABLE bool isCANbusConnected();
     Q_INVOKABLE void setCANbusReceiverID(int node_ID);
@@ -421,9 +424,8 @@ private:
     int mLastCanDeviceBitrate;
     QString mLastCanBackend;
     int mLastCanDeviceID;
-    QByteArray mCanRxBuffer;
+    VescCanTransport mCanTransport;
     QVector<int> mCanNodesID;
-    QList<QString> mCanDeviceInterfaces;
     bool mCANbusScanning;
 #endif
 

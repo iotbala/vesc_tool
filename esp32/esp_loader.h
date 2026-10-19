@@ -117,8 +117,8 @@ typedef struct {
 } esp_loader_connect_args_t;
 
 #define ESP_LOADER_CONNECT_DEFAULT() { \
-  .sync_timeout = 100, \
-  .trials = 10, \
+  100, \
+  10, \
 }
 
 /**

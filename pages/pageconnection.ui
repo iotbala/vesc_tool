@@ -156,6 +156,13 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_7">
          <item>
+          <widget class="QComboBox" name="CANbusBackendBox">
+           <property name="toolTip">
+            <string>CAN adapter driver</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLabel" name="label_6">
            <property name="text">
             <string>Interface</string>
@@ -176,6 +183,16 @@
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="CANbusRefreshButton">
+           <property name="text">
+            <string>Refresh</string>
+           </property>
+           <property name="toolTip">
+            <string>Refresh CAN adapters</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLabel" name="label_5">
            <property name="text">
             <string>VESC ID</string>
@@ -191,32 +208,14 @@
             </sizepolicy>
            </property>
            <property name="toolTip">
-            <string>Discovered VESC nodes in the bus</string>
+            <string>Select a discovered node or enter a CAN ID (0-253)</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="CANbusBitrateBox">
-           <property name="enabled">
-            <bool>false</bool>
-           </property>
-           <property name="focusPolicy">
-            <enum>Qt::WheelFocus</enum>
-           </property>
+          <widget class="QComboBox" name="CANbusBitrateBox">
            <property name="toolTip">
-            <string>This configuration is not supported by the socketcan backend. However it is possible to set the rate when configuring the CAN network interface using the ip link command.</string>
-           </property>
-           <property name="suffix">
-            <string> kbit/s</string>
-           </property>
-           <property name="prefix">
-            <string>Bit rate: </string>
-           </property>
-           <property name="maximum">
-            <number>1000</number>
-           </property>
-           <property name="value">
-            <number>500</number>
+            <string>CAN bus bitrate. Must match the controller.</string>
            </property>
           </widget>
          </item>
@@ -284,6 +283,19 @@
           </widget>
          </item>
         </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="CANbusStatusLabel">
+         <property name="text">
+          <string/>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::PlainText</enum>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
        <item>
         <spacer name="verticalSpacer_4">

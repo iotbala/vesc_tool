@@ -54,6 +54,8 @@ private slots:
     void on_CANbusScanButton_clicked();
     void on_CANbusDisconnectButton_clicked();
     void on_CANbusConnectButton_clicked();
+    void on_CANbusBackendBox_currentIndexChanged(int index);
+    void on_CANbusRefreshButton_clicked();
     void on_tcpDisconnectButton_clicked();
     void on_udpDisconnectButton_clicked();
     void on_tcpConnectButton_clicked();
@@ -88,6 +90,7 @@ private:
     Ui::PageConnection *ui;
     VescInterface *mVesc;
     QTimer *mTimer;
+    bool connectCANbusFromUi();
     UdpServerSimple *mUdpListen;
 
 };

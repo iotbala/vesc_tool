@@ -24,6 +24,8 @@
 #include <QMessageBox>
 #include <QListWidgetItem>
 #include <QInputDialog>
+#include <QIntValidator>
+#include <QSignalBlocker>
 
 PageConnection::PageConnection(QWidget *parent) :
     QWidget(parent),
@@ -69,6 +71,15 @@ PageConnection::PageConnection(QWidget *parent) :
     ui->hubDefaultButton->setIcon(Utility::getIcon("icons/Restart-96.png"));
     ui->tcpDetectConnectButton->setIcon(Utility::getIcon("icons/Connected-96.png"));
     ui->tcpDetectDisconnectButton->setIcon(Utility::getIcon("icons/Disconnected-96.png"));
+
+    ui->CANbusBackendBox->addItem(tr("PEAK PCAN"), "peakcan");
+    ui->CANbusBackendBox->addItem(tr("SocketCAN"), "socketcan");
+    for (int rate : {5, 10, 20, 33, 47, 50, 83, 95, 100, 125, 250, 500, 800, 1000}) {
+        ui->CANbusBitrateBox->addItem(tr("%1 kbit/s").arg(rate), rate * 1000);
+    }
+    ui->CANbusTargetIdBox->setEditable(true);
+    ui->CANbusTargetIdBox->lineEdit()->setValidator(new QIntValidator(0, 253, this));
+    ui->CANbusRefreshButton->setIcon(Utility::getIcon("icons/Refresh-96.png"));
 
     QIcon mycon = QIcon(Utility::getIcon("icons/can_off.png"));
     mycon.addPixmap(Utility::getIcon("icons/can_on.png"), QIcon::Normal, QIcon::On);
@@ -159,16 +170,15 @@ void PageConnection::setVesc(VescInterface *vesc)
 #endif
 
 #ifdef HAS_CANBUS
-    ui->CANbusBitrateBox->setValue(mVesc->getLastCANbusBitrate());
-
-    ui->CANbusInterfaceBox->clear();
-    QList<QString> interfaces = mVesc->listCANbusInterfaces();
-
-    for(int i = 0;i < interfaces.size();i++) {
-        ui->CANbusInterfaceBox->addItem(interfaces.at(i), interfaces.at(i));
+    int bitrateIndex = ui->CANbusBitrateBox->findData(mVesc->getLastCANbusBitrate());
+    ui->CANbusBitrateBox->setCurrentIndex(bitrateIndex >= 0 ? bitrateIndex :
+                                        ui->CANbusBitrateBox->findData(500000));
+    {
+        QSignalBlocker blocker(ui->CANbusBackendBox);
+        ui->CANbusBackendBox->setCurrentIndex(ui->CANbusBackendBox->findData(mVesc->getLastCANbusBackend()));
     }
-
-    ui->CANbusInterfaceBox->setCurrentIndex(0);
+    ui->CANbusTargetIdBox->addItem(QString::number(mVesc->getLastCANbusID()));
+    CANbusInterfaceListUpdated();
 #endif
 
     connect(mVesc->commands(), SIGNAL(pingCanRx(QVector<int>,bool)),
@@ -321,19 +331,66 @@ void PageConnection::pingCanRx(QVector<int> devs, bool isTimeout)
 
 void PageConnection::CANbusNewNode(int node)
 {
-    ui->CANbusTargetIdBox->addItem(QString::number(node), QString::number(node));
+    const QString text = QString::number(node);
+    if (ui->CANbusTargetIdBox->findText(text) < 0) {
+        ui->CANbusTargetIdBox->addItem(text);
+    }
 }
 
 void PageConnection::CANbusInterfaceListUpdated()
 {
-    ui->CANbusInterfaceBox->clear();
-    QList<QString> interfaces = mVesc->listCANbusInterfaces();
-
-    for(int i = 0; i<interfaces.size(); i++) {
-        ui->CANbusInterfaceBox->addItem(interfaces.at(i), interfaces.at(i));
+    if (!mVesc) {
+        return;
     }
+    const auto backend = ui->CANbusBackendBox->currentData().toString();
+    QString selected = ui->CANbusInterfaceBox->currentData().toString();
+#ifdef HAS_CANBUS
+    if (selected.isEmpty() && backend == mVesc->getLastCANbusBackend()) {
+        selected = mVesc->getLastCANbusInterface();
+    }
+#endif
+    QString error;
+    const auto interfaces = mVesc->listCANbusInterfaces(backend, &error);
+    ui->CANbusInterfaceBox->clear();
+    for (const auto &name : interfaces) {
+        ui->CANbusInterfaceBox->addItem(name, name);
+    }
+    const int index = ui->CANbusInterfaceBox->findData(selected);
+    ui->CANbusInterfaceBox->setCurrentIndex(index >= 0 ? index : 0);
+    const bool socketCan = backend == "socketcan";
+    ui->CANbusBitrateBox->setEnabled(!socketCan);
+    ui->CANbusBitrateBox->setToolTip(socketCan ?
+                tr("Set the SocketCAN bitrate with ip link before connecting.") :
+                tr("CAN bus bitrate. Must match the controller."));
+    if (!error.isEmpty()) {
+        ui->CANbusStatusLabel->setText(error + (backend == "peakcan" ?
+                    tr(" Check the Qt peakcan plugin, PEAK driver and matching PCANBasic.dll.") : QString()));
+    } else if (interfaces.isEmpty()) {
+        ui->CANbusStatusLabel->setText(tr("No CAN adapters found. Connect the adapter and click Refresh."));
+    } else {
+        ui->CANbusStatusLabel->setText(tr("Select the bitrate, scan for controllers, then select a VESC ID and connect."));
+    }
+    ui->CANbusScanButton->setEnabled(!interfaces.isEmpty());
+    ui->CANbusConnectButton->setEnabled(!interfaces.isEmpty());
+}
 
-    ui->CANbusInterfaceBox->setCurrentIndex(0);
+void PageConnection::on_CANbusBackendBox_currentIndexChanged(int index)
+{
+    (void)index;
+    ui->CANbusInterfaceBox->clear();
+    CANbusInterfaceListUpdated();
+}
+
+void PageConnection::on_CANbusRefreshButton_clicked()
+{
+    CANbusInterfaceListUpdated();
+}
+
+bool PageConnection::connectCANbusFromUi()
+{
+    return mVesc && mVesc->connectCANbus(ui->CANbusBackendBox->currentData().toString(),
+                                       ui->CANbusInterfaceBox->currentData().toString(),
+                                       ui->CANbusBitrateBox->currentData().toInt());
 }
 
 void PageConnection::pairingListUpdated()
@@ -383,14 +440,22 @@ void PageConnection::on_serialConnectButton_clicked()
 
 void PageConnection::on_CANbusScanButton_clicked()
 {
-    if (mVesc) {
+    if (connectCANbusFromUi()) {
         ui->CANbusScanButton->setEnabled(false);
-        mVesc->connectCANbus("socketcan", ui->CANbusInterfaceBox->currentData().toString(),
-                             ui->CANbusBitrateBox->value());
-
+        ui->CANbusConnectButton->setEnabled(false);
+        ui->CANbusBackendBox->setEnabled(false);
+        ui->CANbusInterfaceBox->setEnabled(false);
+        ui->CANbusRefreshButton->setEnabled(false);
         ui->CANbusTargetIdBox->clear();
+        ui->CANbusStatusLabel->setText(tr("Scanning CAN IDs 0-253..."));
         mVesc->scanCANbus();
+        ui->CANbusStatusLabel->setText(tr("Found %1 controller(s). Select a VESC ID and connect.")
+                                     .arg(ui->CANbusTargetIdBox->count()));
         ui->CANbusScanButton->setEnabled(true);
+        ui->CANbusConnectButton->setEnabled(true);
+        ui->CANbusBackendBox->setEnabled(true);
+        ui->CANbusInterfaceBox->setEnabled(true);
+        ui->CANbusRefreshButton->setEnabled(true);
     }
 }
 
@@ -403,10 +468,18 @@ void PageConnection::on_CANbusDisconnectButton_clicked()
 
 void PageConnection::on_CANbusConnectButton_clicked()
 {
-    if (mVesc) {
-        mVesc->setCANbusReceiverID(ui->CANbusTargetIdBox->currentData().toInt());
-        mVesc->connectCANbus("socketcan", ui->CANbusInterfaceBox->currentData().toString(),
-                             ui->CANbusBitrateBox->value());
+    if (!mVesc) {
+        return;
+    }
+    bool ok = false;
+    const int node = ui->CANbusTargetIdBox->currentText().toInt(&ok);
+    if (!ok || node < 0 || node > 253) {
+        mVesc->emitMessageDialog(tr("CAN bus"), tr("Enter a VESC ID between 0 and 253, or scan first."), false, false);
+        return;
+    }
+    mVesc->setCANbusReceiverID(node);
+    if (connectCANbusFromUi()) {
+        ui->CANbusStatusLabel->setText(tr("Connected to CAN ID %1").arg(node));
     }
 }
 

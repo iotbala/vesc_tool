@@ -137,6 +137,8 @@ If you have custom hardware and you want to add support for it in the official r
 
 ## Development
 
+This checkout adds PEAK PCAN support on Windows. See [PCAN setup, building, and tests](PCAN_SUPPORT.md).
+
 **Note:** These instructions build VESC Tool without the BLDC firmwares bundled.
 
 ### Linux

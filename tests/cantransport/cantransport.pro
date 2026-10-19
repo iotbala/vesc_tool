@@ -1,0 +1,10 @@
+QT += core network serialbus testlib
+QT -= gui
+CONFIG += console testcase c++11
+CONFIG -= app_bundle
+win32: DEFINES += _USE_MATH_DEFINES
+TEMPLATE = app
+TARGET = tst_cantransport
+INCLUDEPATH += ../..
+SOURCES += tst_cantransport.cpp ../../vesccantransport.cpp ../../packet.cpp
+HEADERS += ../../vesccantransport.h ../../packet.h

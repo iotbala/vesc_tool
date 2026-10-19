@@ -74,6 +74,10 @@ DEFINES += HAS_BLUETOOTH
 # Adding serialbus to Qt seems to break the serial port on static builds. TODO: Figure out why.
 #DEFINES += HAS_CANBUS
 
+# PCAN desktop builds use Qt Serial Bus and its peakcan plugin.
+win32:!contains(CONFIG, no_canbus): DEFINES += HAS_CANBUS
+contains(CONFIG, canbus): DEFINES += HAS_CANBUS
+
 # Positioning
 !win32: {
     DEFINES += HAS_POS
@@ -122,6 +126,9 @@ contains(DEFINES, HAS_SERIALPORT) {
 
 contains(DEFINES, HAS_CANBUS) {
     QT       += serialbus
+    SOURCES += vesccantransport.cpp
+    HEADERS += vesccantransport.h
+    static:win32: QTPLUGIN += qtpeakcanbus
 }
 
 contains(DEFINES, HAS_BLUETOOTH) {
