@@ -32,6 +32,11 @@ session. The application reserves node ID 254 for its replies; controllers on th
 bus must use different IDs. CAN FD adapters operate in classic CAN mode here.
 Hardware motor operation still needs to be checked against the actual controller.
 
+The adapter controls and controller controls occupy separate rows so bitrate,
+Scan and Connect stay visible with larger desktop fonts. An empty scan preserves
+the manually entered ID. Discovery waits briefly for delayed USB replies and
+reports transmit/bus errors separately from a completed scan with no VESC replies.
+
 For SocketCAN, configure and bring up the network interface with `ip link` before
 connecting. The bitrate selector is disabled because SocketCAN uses that interface
 configuration.

@@ -441,21 +441,48 @@ void PageConnection::on_serialConnectButton_clicked()
 void PageConnection::on_CANbusScanButton_clicked()
 {
     if (connectCANbusFromUi()) {
+        const QString previousId = ui->CANbusTargetIdBox->currentText();
+        const bool bitrateEnabled = ui->CANbusBitrateBox->isEnabled();
+        QString scanError;
+        const auto errorConnection = connect(mVesc, &VescInterface::statusMessage, this,
+                    [&scanError](const QString &message, bool isGood) {
+            if (!isGood && message.startsWith("CAN") && scanError.isEmpty()) {
+                scanError = message;
+            }
+        });
         ui->CANbusScanButton->setEnabled(false);
         ui->CANbusConnectButton->setEnabled(false);
         ui->CANbusBackendBox->setEnabled(false);
         ui->CANbusInterfaceBox->setEnabled(false);
         ui->CANbusRefreshButton->setEnabled(false);
+        ui->CANbusBitrateBox->setEnabled(false);
         ui->CANbusTargetIdBox->clear();
         ui->CANbusStatusLabel->setText(tr("Scanning CAN IDs 0-253..."));
         mVesc->scanCANbus();
-        ui->CANbusStatusLabel->setText(tr("Found %1 controller(s). Select a VESC ID and connect.")
-                                     .arg(ui->CANbusTargetIdBox->count()));
+        disconnect(errorConnection);
+        const int count = ui->CANbusTargetIdBox->count();
+        if (count == 0) {
+            ui->CANbusTargetIdBox->setEditText(previousId);
+        } else if (ui->CANbusTargetIdBox->findText(previousId) >= 0) {
+            ui->CANbusTargetIdBox->setCurrentText(previousId);
+        }
+        if (!scanError.isEmpty()) {
+            ui->CANbusStatusLabel->setText(tr("Scan stopped: %1 (%2 controller(s) found).")
+                                         .arg(scanError).arg(count));
+        } else if (count == 0) {
+            ui->CANbusStatusLabel->setText(tr("No VESC replies. Check controller power, CAN-H/CAN-L, "
+                                            "termination, VESC CAN mode and matching bitrate. "
+                                            "You can also enter the known VESC ID and connect."));
+        } else {
+            ui->CANbusStatusLabel->setText(tr("Found %1 controller(s). Select a VESC ID and connect.")
+                                         .arg(count));
+        }
         ui->CANbusScanButton->setEnabled(true);
         ui->CANbusConnectButton->setEnabled(true);
         ui->CANbusBackendBox->setEnabled(true);
         ui->CANbusInterfaceBox->setEnabled(true);
         ui->CANbusRefreshButton->setEnabled(true);
+        ui->CANbusBitrateBox->setEnabled(bitrateEnabled);
     }
 }
 
@@ -463,6 +490,7 @@ void PageConnection::on_CANbusDisconnectButton_clicked()
 {
     if (mVesc) {
         mVesc->disconnectPort();
+        ui->CANbusStatusLabel->setText(tr("Disconnected."));
     }
 }
 

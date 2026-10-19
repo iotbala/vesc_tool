@@ -2836,23 +2836,36 @@ void VescInterface::scanCANbus()
     QEventLoop loop;
     QTimer pollTimer;
     int node = 0;
-    connect(&pollTimer, &QTimer::timeout, &loop, [this, &loop, &node]() {
+    bool completed = false;
+    connect(&pollTimer, &QTimer::timeout, &loop, [this, &loop, &pollTimer, &node, &completed]() {
         if (!mCANbusScanning || !isCANbusConnected()) {
+            emit statusMessage(tr("CAN scan cancelled or adapter disconnected."), false);
             loop.quit();
             return;
         }
         if (node < VescCanTransport::ToolNodeId) {
             if (!mCanDevice->writeFrame(VescCanTransport::ping(node++))) {
+                emit statusMessage(tr("CAN scan transmit failed: %1").arg(mCanDevice->errorString()), false);
                 loop.quit();
             }
         } else {
-            // Allow the last pong to arrive before releasing the adapter.
-            loop.quit();
+            completed = true;
+            pollTimer.stop();
+            // Keep receiving briefly after the last ping, including delayed USB replies.
+            QTimer::singleShot(100, &loop, &QEventLoop::quit);
         }
     });
     pollTimer.start(15);
     loop.exec();
     pollTimer.stop();
+    if (completed && mCanDevice && mCanDevice->hasBusStatus()) {
+        const auto status = mCanDevice->busStatus();
+        if (status == QCanBusDevice::CanBusStatus::BusOff ||
+                status == QCanBusDevice::CanBusStatus::Error ||
+                status == QCanBusDevice::CanBusStatus::Warning) {
+            emit statusMessage(tr("CAN bus is reporting errors. Check wiring, termination and bitrate."), false);
+        }
+    }
     disconnectPort();
 #endif
 }

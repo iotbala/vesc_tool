@@ -156,6 +156,13 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_7">
          <item>
+          <widget class="QLabel" name="CANbusBackendLabel">
+           <property name="text">
+            <string>Adapter</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QComboBox" name="CANbusBackendBox">
            <property name="toolTip">
             <string>CAN adapter driver</string>
@@ -193,6 +200,20 @@
           </widget>
          </item>
          <item>
+          <spacer name="CANbusAdapterSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size><width>40</width><height>20</height></size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="CANbusControllerLayout">
+         <item>
           <widget class="QLabel" name="label_5">
            <property name="text">
             <string>VESC ID</string>
@@ -202,13 +223,26 @@
          <item>
           <widget class="QComboBox" name="CANbusTargetIdBox">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
+           <property name="maximumSize">
+            <size><width>120</width><height>16777215</height></size>
+           </property>
+           <property name="minimumContentsLength">
+            <number>3</number>
+           </property>
            <property name="toolTip">
             <string>Select a discovered node or enter a CAN ID (0-253)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="CANbusBitrateLabel">
+           <property name="text">
+            <string>Bitrate</string>
            </property>
           </widget>
          </item>
@@ -281,6 +315,16 @@
              <normaloff>:/res/icons/Connected-96.png</normaloff>:/res/icons/Connected-96.png</iconset>
            </property>
           </widget>
+         </item>
+         <item>
+          <spacer name="CANbusControllerSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size><width>40</width><height>20</height></size>
+           </property>
+          </spacer>
          </item>
         </layout>
        </item>
