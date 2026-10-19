@@ -39,6 +39,7 @@
 #ifdef HAS_CANBUS
 #include <QCanBus>
 #include "vesccantransport.h"
+#include "vesccantxqueue.h"
 #endif
 
 #include "datatypes.h"
@@ -425,6 +426,9 @@ private:
     QString mLastCanBackend;
     int mLastCanDeviceID;
     VescCanTransport mCanTransport;
+    VescCanTxQueue *mCanTxQueue;
+    bool mCanRxProcessing;
+    QElapsedTimer mCanWarningTime;
     QVector<int> mCanNodesID;
     bool mCANbusScanning;
 #endif

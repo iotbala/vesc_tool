@@ -128,6 +128,8 @@ contains(DEFINES, HAS_CANBUS) {
     QT       += serialbus
     SOURCES += vesccantransport.cpp
     HEADERS += vesccantransport.h
+    SOURCES += vesccantxqueue.cpp
+    HEADERS += vesccantxqueue.h
     static:win32: QTPLUGIN += qtpeakcanbus
 }
 

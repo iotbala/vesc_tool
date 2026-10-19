@@ -23,6 +23,16 @@ PollManager::PollManager(QObject *parent, VescInterface *vesc)
     : QObject{parent}, mVesc {vesc}
 {
     connect(&mPollTimer, &QTimer::timeout, [this]() {
+        // A real-time update requests several fragmented replies. Spread those
+        // requests over the CAN link instead of polling every field at 50 Hz.
+        const int interval = mVesc && mVesc->isCANbusConnected() ? 40 : 10;
+        if (mPollTimer.interval() != interval) {
+            mPollTimer.setInterval(interval);
+        }
+        if (!mVesc || !mVesc->isPortConnected()) {
+            mPollList.clear();
+            return;
+        }
         if (!mPollList.isEmpty() && mVesc != nullptr) {
             auto id = mPollList.first();
             mPollList.removeAll(id);
@@ -98,5 +108,8 @@ void PollManager::setVesc(VescInterface *vesc)
 
 void PollManager::pollField(COMM_PACKET_ID id)
 {
-    mPollList.append(id);
+    // Coalesce pending refreshes, so slow links never accumulate stale polls.
+    if (!mPollList.contains(id)) {
+        mPollList.append(id);
+    }
 }

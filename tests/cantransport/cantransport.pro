@@ -8,3 +8,5 @@ TARGET = tst_cantransport
 INCLUDEPATH += ../..
 SOURCES += tst_cantransport.cpp ../../vesccantransport.cpp ../../packet.cpp
 HEADERS += ../../vesccantransport.h ../../packet.h
+SOURCES += ../../vesccantxqueue.cpp
+HEADERS += ../../vesccantxqueue.h

@@ -37,6 +37,17 @@ Scan and Connect stay visible with larger desktop fonts. An empty scan preserves
 the manually entered ID. Discovery waits briefly for delayed USB replies and
 reports transmit/bus errors separately from a completed scan with no VESC replies.
 
+Real-time CAN polling is limited to 25 requests per second across the enabled
+telemetry fields, and duplicate pending refreshes are combined. Other connection
+types keep their normal polling rate. CAN sends run asynchronously with bounded
+queues, and receive batches yield to the UI. Recoverable bus-heavy warnings remain
+visible without forcing an immediate disconnect; bus-off, error-passive and stalled
+transmissions still stop the connection.
+
+BUSHEAVY indicates a CAN error-counter warning, not simply high utilization.
+If it persists, check the physical CAN wiring, termination and matching bitrate.
+See [PEAK's status definitions](https://www.peak-system.com/documentation/API/PCAN-Basic.Net/html/bb6e13ad-203d-405e-aba9-89895bda82dd.htm).
+
 For SocketCAN, configure and bring up the network interface with `ip link` before
 connecting. The bitrate selector is disabled because SocketCAN uses that interface
 configuration.
@@ -83,7 +94,8 @@ release\tst_cantransport.exe -o results.txt,txt
 type results.txt
 ```
 
-Tests cover sender IDs, short commands, CAN forwarding, fragmentation across the
+Tests cover asynchronous transmit ordering, a stalled backend with a responsive
+event loop, queue bounds, disconnect cleanup, sender IDs, short commands, CAN forwarding, fragmentation across the
 255-byte offset boundary, replies up to 10,000 bytes, CRC, truncated frames,
 wrong recipients and lost fragments. On Windows they also load `peakcan` and
 enumerate adapters without opening or transmitting on the bus.

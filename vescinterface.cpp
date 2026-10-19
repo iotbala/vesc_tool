@@ -24,6 +24,7 @@
 #include <QThread>
 #include <QEventLoop>
 #include <QPointer>
+#include <QScopedValueRollback>
 #include <cmath>
 #include <QRegularExpression>
 #include <QDateTime>
@@ -150,6 +151,12 @@ VescInterface::VescInterface(QObject *parent) : QObject(parent)
     // CANbus
 #ifdef HAS_CANBUS
     mCanDevice = nullptr;
+    mCanRxProcessing = false;
+    mCanTxQueue = new VescCanTxQueue(this);
+    connect(mCanTxQueue, &VescCanTxQueue::failed, this, [this](const QString &message) {
+        emit statusMessage(message, false);
+        disconnectPort();
+    });
 #ifdef Q_OS_WIN
     mLastCanDeviceInterface = mSettings.value("CANbusDeviceInterface", "usb0").toString();
     mLastCanBackend = mSettings.value("CANbusBackend", "peakcan").toString();
@@ -2280,6 +2287,7 @@ void VescInterface::disconnectPort()
 #endif
 
 #ifdef HAS_CANBUS
+    mCanTxQueue->setDevice(nullptr);
     if (mCanDevice) {
         mCANbusScanning = false;
         disconnect(mCanDevice, nullptr, this, nullptr);
@@ -2668,6 +2676,8 @@ bool VescInterface::connectCANbus(QString backend, QString ifName, int bitrate)
     QThread::msleep(10);
 
     mLastCanBackend = backend;
+    mCanTxQueue->setDevice(mCanDevice);
+    mCanWarningTime.invalidate();
     mLastCanDeviceInterface = ifName;
     mLastCanDeviceBitrate = bitrate;
 
@@ -3093,7 +3103,15 @@ void VescInterface::serialPortError(QSerialPort::SerialPortError error)
 #ifdef HAS_CANBUS
 void VescInterface::CANbusDataAvailable()
 {
-    while (mCanDevice && mCanDevice->framesAvailable() > 0) {
+    if (mCanRxProcessing) {
+        return;
+    }
+    QScopedValueRollback<bool> processing(mCanRxProcessing, true);
+    QElapsedTimer budget;
+    budget.start();
+    int frames = 0;
+    while (mCanDevice && isCANbusConnected() && mCanDevice->framesAvailable() > 0 &&
+           frames++ < 256 && budget.elapsed() < 4) {
         const auto result = mCanTransport.receive(mCanDevice->readFrame());
         if (mCANbusScanning && result.nodeId >= 0 && !mCanNodesID.contains(result.nodeId)) {
             mCanNodesID.append(result.nodeId);
@@ -3101,14 +3119,36 @@ void VescInterface::CANbusDataAvailable()
         }
         if (!mCANbusScanning && !result.packet.isEmpty()) {
             auto packet = result.packet;
-            emit mPacket->packetReceived(packet);
+            QPointer<QCanBusDevice> device = mCanDevice;
+            // Firmware/configuration handlers may run their own event loops.
+            // Dispatch after reassembly returns, so those waits can still receive
+            // their replies and cannot recursively enter this read batch.
+            QTimer::singleShot(0, this, [this, device, packet]() mutable {
+                if (device && mCanDevice == device && isCANbusConnected() && !mCANbusScanning) {
+                    emit mPacket->packetReceived(packet);
+                }
+            });
         }
+    }
+    if (mCanDevice && isCANbusConnected() && mCanDevice->framesAvailable() > 0) {
+        QTimer::singleShot(1, this, &VescInterface::CANbusDataAvailable);
     }
 }
 
 void VescInterface::CANbusError(QCanBusDevice::CanBusError error)
 {
     if (error == QCanBusDevice::NoError || !mCanDevice) {
+        return;
+    }
+    // BUSHEAVY is a recoverable warning. Keep it visible without repeatedly
+    // disconnecting/reconnecting the adapter; bus-off/error-passive remain fatal.
+    if (error == QCanBusDevice::ReadError && mCanDevice->hasBusStatus() &&
+            mCanDevice->busStatus() == QCanBusDevice::CanBusStatus::Warning) {
+        if (!mCanWarningTime.isValid() || mCanWarningTime.elapsed() >= 1000) {
+            emit statusMessage(tr("CAN bus warning: %1. Check wiring, termination and bitrate.")
+                               .arg(mCanDevice->errorString()), false);
+            mCanWarningTime.start();
+        }
         return;
     }
     emit statusMessage(tr("CAN bus error: %1").arg(mCanDevice->errorString()), false);
@@ -3342,16 +3382,7 @@ void VescInterface::packetDataToSend(QByteArray &data)
         }
         packet = packet.mid(headerSize, packet.size() - headerSize - 3);
         const auto frames = VescCanTransport::encode(packet, mLastCanDeviceID);
-        for (const auto &frame : frames) {
-            if (!mCanDevice || !mCanDevice->writeFrame(frame)) {
-                break;
-            }
-            // Bound the transmit queue for long configuration/firmware packets.
-            if (mCanDevice->framesToWrite() > 0 && !mCanDevice->waitForFramesWritten(100)) {
-                emit statusMessage(tr("CAN bus transmit timed out"), false);
-                break;
-            }
-        }
+        mCanTxQueue->enqueue(frames);
     }
 #endif
 

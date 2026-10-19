@@ -2,8 +2,37 @@
 #include <QtTest>
 #include <QCanBus>
 #include "vesccantransport.h"
+#include "vesccantxqueue.h"
 #include "datatypes.h"
 #include "packet.h"
+
+class BufferedCanDevice : public QCanBusDevice
+{
+public:
+    explicit BufferedCanDevice(bool stall = false) : holdWrites(stall) { setState(ConnectedState); }
+    bool open() override { setState(ConnectedState); return true; }
+    void close() override { setState(UnconnectedState); }
+    QString interpretErrorFrame(const QCanBusFrame &) override { return {}; }
+    bool waitForFramesWritten(int) override { ++blockingWaits; return false; }
+    bool writeFrame(const QCanBusFrame &frame) override {
+        sent.append(frame);
+        enqueueOutgoingFrame(frame);
+        maxBackendQueue = qMax(maxBackendQueue, framesToWrite());
+        if (!holdWrites) {
+            QTimer::singleShot(3, this, [this]() {
+                if (state() == ConnectedState && framesToWrite() > 0) {
+                    dequeueOutgoingFrame();
+                    emit framesWritten(1);
+                }
+            });
+        }
+        return true;
+    }
+    QVector<QCanBusFrame> sent;
+    qint64 maxBackendQueue = 0;
+    int blockingWaits = 0;
+    bool holdWrites;
+};
 
 class CanTransportTest : public QObject
 {
@@ -17,6 +46,79 @@ private:
     }
 
 private slots:
+    void asynchronousTransmitKeepsPacketOrder()
+    {
+        BufferedCanDevice device;
+        VescCanTxQueue queue;
+        queue.setDevice(&device);
+        const auto first = VescCanTransport::encode(QByteArray(40, '\0'), 2);
+        const auto second = VescCanTransport::encode(QByteArray::fromHex("04"), 2);
+        QVERIFY(queue.enqueue(first));
+        QVERIFY(queue.enqueue(second));
+        QVERIFY(device.sent.isEmpty()); // Submission did not run a nested event loop.
+        QTRY_COMPARE(device.sent.size(), first.size() + second.size());
+        auto expected = first;
+        expected += second;
+        for (int i = 0; i < expected.size(); ++i) {
+            QCOMPARE(device.sent[i].frameId(), expected[i].frameId());
+            QCOMPARE(device.sent[i].payload(), expected[i].payload());
+        }
+        QCOMPARE(device.maxBackendQueue, qint64(1));
+        QCOMPARE(device.blockingWaits, 0);
+    }
+
+    void stalledBackendDoesNotBlockUi()
+    {
+        BufferedCanDevice device(true);
+        VescCanTxQueue queue;
+        queue.setDevice(&device);
+        QSignalSpy failures(&queue, &VescCanTxQueue::failed);
+        int ticks = 0;
+        QTimer heartbeat;
+        connect(&heartbeat, &QTimer::timeout, [&ticks]() { ++ticks; });
+        heartbeat.start(5);
+        QVERIFY(queue.enqueue(VescCanTransport::encode(QByteArray(40, '\0'), 2)));
+        QTest::qWait(100);
+        QVERIFY(ticks >= 5);
+        QCOMPARE(device.sent.size(), 1);
+        QCOMPARE(device.maxBackendQueue, qint64(1));
+        QTRY_COMPARE(failures.size(), 1);
+        QCOMPARE(queue.pendingFrames(), 0);
+        QCOMPARE(device.blockingWaits, 0);
+    }
+
+    void disconnectDropsPendingCommands()
+    {
+        BufferedCanDevice oldDevice(true);
+        BufferedCanDevice newDevice;
+        VescCanTxQueue queue;
+        queue.setDevice(&oldDevice);
+        QVERIFY(queue.enqueue(VescCanTransport::encode(QByteArray(40, '\0'), 2)));
+        QTRY_COMPARE(oldDevice.sent.size(), 1);
+        queue.setDevice(nullptr);
+        QCOMPARE(queue.pendingFrames(), 0);
+        queue.setDevice(&newDevice);
+        const auto command = VescCanTransport::encode(QByteArray::fromHex("04"), 3);
+        QVERIFY(queue.enqueue(command));
+        QTRY_COMPARE(newDevice.sent.size(), 1);
+        QCOMPARE(newDevice.sent.first().frameId(), command.first().frameId());
+        QCOMPARE(oldDevice.sent.size(), 1);
+    }
+
+    void transmitQueueOverflowIsBounded()
+    {
+        BufferedCanDevice device(true);
+        VescCanTxQueue queue;
+        queue.setDevice(&device);
+        QSignalSpy failures(&queue, &VescCanTxQueue::failed);
+        const auto frame = VescCanTransport::ping(2);
+        QVERIFY(queue.enqueue(QVector<QCanBusFrame>(VescCanTxQueue::MaxQueuedFrames, frame)));
+        QVERIFY(!queue.enqueue({frame}));
+        QCOMPARE(failures.size(), 1);
+        QCOMPARE(queue.pendingFrames(), 0);
+        QVERIFY(device.sent.isEmpty());
+    }
+
     void pingHasReturnAddress()
     {
         const auto frame = VescCanTransport::ping(200);
